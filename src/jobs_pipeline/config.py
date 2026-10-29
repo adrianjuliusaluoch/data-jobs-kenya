@@ -15,3 +15,6 @@ PG_CATALOG = os.environ["PG_CATALOG"]
 # What we search for
 QUERY = "Data Analyst"
 LOCATION = "Kenya"
+
+# most pages to read per run, each page costs one SerpAPI search
+max_pages = 2
