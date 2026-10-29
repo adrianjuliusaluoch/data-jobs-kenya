@@ -17,6 +17,7 @@ CREATE_TABLE = """
         detected_extensions VARCHAR,
         apply_options VARCHAR,
         job_id VARCHAR,
+        search_query VARCHAR,
         scraped_at TIMESTAMPTZ,
         source_file VARCHAR
     )
@@ -50,7 +51,7 @@ def connect():
 
 
 def load(parquet_path):
-    # Add one raw parquet file to the job_listings table
+    # Add the new listings from one raw parquet file to the job_listings table
     name = Path(parquet_path).name
     con = connect()
     con.execute(CREATE_TABLE)
@@ -63,11 +64,25 @@ def load(parquet_path):
         print(f"already loaded, skipping {name}")
     else:
         con.execute(f"""
-            INSERT INTO lake.job_listings BY NAME
+            CREATE TEMP TABLE incoming AS
             SELECT *, '{name}' AS source_file
             FROM read_parquet('{Path(parquet_path).as_posix()}')
         """)
-        print(f"loaded {name} into the lakehouse")
+        total = con.execute("SELECT COUNT(*) FROM incoming").fetchone()[0]
+
+        # insert only listings not already in the table (same key the old script used)
+        added = con.execute("""
+            INSERT INTO lake.job_listings BY NAME
+            SELECT * FROM incoming i
+            WHERE NOT EXISTS (
+                SELECT 1 FROM lake.job_listings t
+                WHERE t.title IS NOT DISTINCT FROM i.title
+                  AND t.description IS NOT DISTINCT FROM i.description
+                  AND t.company_name IS NOT DISTINCT FROM i.company_name
+                  AND t.via IS NOT DISTINCT FROM i.via
+            )
+        """).fetchone()[0]
+        print(f"loaded {name}: {added} new, {total - added} already in the table")
 
     con.execute("DETACH lake")
     con.close()

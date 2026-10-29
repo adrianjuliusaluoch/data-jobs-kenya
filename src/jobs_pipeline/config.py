@@ -12,9 +12,11 @@ B2_APP_KEY = os.environ["B2_APP_KEY"]
 B2_BUCKET = os.environ["B2_BUCKET"]
 PG_CATALOG = os.environ["PG_CATALOG"]
 
-# What we search for
-QUERY = "Data Analyst"
+# Where we search
 LOCATION = "Kenya"
 
-# most pages to read per run, each page costs one SerpAPI search
+# the job titles we search for, each costs up to max_pages searches per run
+queries = ["Data Analyst", "Data Scientist", "Data Engineer"]
+
+# most pages to read per title (10 listings a page, one SerpAPI search per page)
 max_pages = 2

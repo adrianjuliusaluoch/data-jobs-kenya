@@ -1,4 +1,4 @@
-# Get Google Jobs listings from SerpAPI, one page at a time
+# Get Google Jobs listings from SerpAPI, one job title at a time
 import json
 import time
 
@@ -13,39 +13,43 @@ def as_json(value):
     return json.dumps(value) if value else None
 
 
-def get_page(params, retry):
-    # one search; only the first page is retried, because on later pages an error just means the end
+def get_page(params):
+    # one search; retry once on an error, unless it just says the page is empty
     results = GoogleSearch(params).get_dict()
-    if "error" in results and retry:
-        print(f"Search failed: {results['error']}, retrying once...")
+    error = results.get("error")
+    if error and "any results" not in error:
+        print(f"  search failed: {error}, retrying once...")
         time.sleep(10)
         results = GoogleSearch(params).get_dict()
     return results
 
 
-def search_jobs(run_time):
+def search_one(query, run_time):
+    # all pages (up to max_pages) for one job title
     params = {
         "engine": "google_jobs",
-        "q": config.QUERY,
+        "q": query,
         "location": config.LOCATION,
         "google_domain": "google.com",
         "hl": "en",
-        "no_cache": "true",
         "api_key": config.SERPAPI_KEY,
     }
 
     records = []
     for page in range(1, config.max_pages + 1):
-        results = get_page(params, retry=(page == 1))
+        results = get_page(params)
 
         if "error" in results:
             if page == 1:
-                # a hard error on the first page makes the run show as failed
-                raise RuntimeError(f"Search failed: {results['error']}")
-            print(f"page {page}: {results['error']}, treating it as the last page")
+                raise RuntimeError(results["error"])
+            print(f"  {query} page {page}: stopped, {results['error']}")
             break
 
-        for job in results.get("jobs_results", []):
+        jobs = results.get("jobs_results", [])
+        status = results.get("search_metadata", {}).get("status")
+        print(f"  {query} page {page}: {len(jobs)} listings ({status})")
+
+        for job in jobs:
             records.append({
                 "title": job.get("title"),
                 "company_name": job.get("company_name"),
@@ -57,16 +61,44 @@ def search_jobs(run_time):
                 "detected_extensions": as_json(job.get("detected_extensions")),
                 "apply_options": as_json(job.get("apply_options")),
                 "job_id": job.get("job_id"),
+                "search_query": query,
                 "scraped_at": run_time,
             })
-        print(f"page {page}: {len(results.get('jobs_results', []))} listings")
 
         # no token means that was the last page
         token = results.get("serpapi_pagination", {}).get("next_page_token")
         if not token:
+            print(f"  {query}: no next page token after page {page}")
             break
         params["next_page_token"] = token
         time.sleep(1)
 
-    # the same job can appear on two pages, keep one copy per run
-    return pd.DataFrame(records).drop_duplicates(subset="job_id")
+    return records
+
+
+def search_jobs(run_time):
+    records, failed = [], []
+    for query in config.queries:
+        try:
+            found = search_one(query, run_time)
+        except RuntimeError as e:
+            print(f"{query}: failed ({e})")
+            failed.append(query)
+            continue
+        print(f"{query}: {len(found)} listings total")
+        records.extend(found)
+        time.sleep(1)
+
+    # if every title failed, make the run show as failed
+    if len(failed) == len(config.queries):
+        raise RuntimeError("every search failed")
+    if failed:
+        print(f"warning: these searches failed and were skipped: {failed}")
+    if not records:
+        return pd.DataFrame()
+
+    # one copy per run: first by job_id, then by the same key the old script used
+    df = pd.DataFrame(records)
+    df = df.drop_duplicates(subset="job_id")
+    df = df.drop_duplicates(subset=["title", "description", "company_name", "via"])
+    return df
