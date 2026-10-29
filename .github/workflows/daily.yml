@@ -1,0 +1,27 @@
+name: Daily Jobs Run
+
+on:
+  workflow_dispatch:      # started by cron-job.org, or by hand from the Actions tab
+
+concurrency:
+  group: jobs-lakehouse   # never run two at once
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: python -m jobs_pipeline.run
+        env:
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          PG_CATALOG: ${{ secrets.PG_CATALOG }}
