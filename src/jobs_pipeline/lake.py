@@ -43,7 +43,8 @@ def connect():
     # the data path must match the one the weather pipeline already uses
     con.execute(f"""
         ATTACH 'ducklake:postgres:{config.PG_CATALOG}' AS lake (
-            DATA_PATH 's3://{config.B2_BUCKET}/lake/',
+            DATA_PATH 's3://{config.B2_BUCKET}/lake/jobs/',
+            METADATA_SCHEMA 'jobs',
             DATA_INLINING_ROW_LIMIT 0
         )
     """)
